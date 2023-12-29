@@ -231,6 +231,15 @@ mod tests {
                 positives: vec![Rule::StandaloneDecl], negatives: vec![], pos: 0
             };
         }
+
+        #[test]
+        fn test_xml_decl() {
+            parses_to! {
+                parser: XMLParser, input: r#"<?xml version="1.0"?>"#, rule: Rule::XMLDecl, tokens: [XMLDecl(0,21, [
+                    VersionInfo(5,19, [S(5,6), Eq(13,14),Quote(14,15),VersionNum(15,18)])
+                ])]
+            }
+        }
     }
 
     #[test]

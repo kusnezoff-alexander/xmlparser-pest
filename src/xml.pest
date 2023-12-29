@@ -8,7 +8,7 @@ Quote = { "'" | "\"" }
 Comment = { "<!--" ~ (!"-" ~ Char | "-" ~ !"-" ~ Char)* ~ "-->" } // =last char can't be '-'
 
 // # Prolog [22]
-XMLDecl = { "<?xml" ~ VersionInfo ~ EncodingDecl? } // WIP!
+XMLDecl = { "<?xml" ~ VersionInfo ~ EncodingDecl? ~ StandaloneDecl? ~ S? ~ "?>" } // [23](https://www.w3.org/TR/REC-xml/#NT-XMLDecl)
 VersionInfo = { S ~ "version" ~ Eq ~ PUSH(Quote) ~ VersionNum ~ POP }
 Eq = { S? ~ "=" ~ S? } // [25]
 VersionNum = { "1." ~ ASCII_DIGIT+ } // [VerionNum](https://www.w3.org/TR/REC-xml/#NT-VersionNum): Warning if !=1.0?
