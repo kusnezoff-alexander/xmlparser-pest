@@ -107,18 +107,6 @@ mod tests {
 
     use super::*;
 
-    // #[test]
-    // fn test_xml_char() {
-    //
-    //     // let c = "a";
-    //     // let xml = XMLParser::parse(Rule::Char, c).unwrap().next().unwrap();
-    //     // assert_eq!("a",parse_value(xml));
-    //     parses_to! {
-    //         parser: XMLParser, input: " ", rule: Rule::Char, tokens: [Char(0,1)]
-    //     }
-    // }
-
-
     mod general_tests {
         use super::*;
 
@@ -178,7 +166,7 @@ mod tests {
 
             // unicode-encoded emojis are allowed
             parses_to! {
-                parser: XMLParser, input: "\u{1F600}ABCDEF \u{1F600}", rule: Rule::Name, tokens: [Name(0,15)]
+                parser: XMLParser, input: "\u{1F600}ABCDEF\u{1F600}", rule: Rule::Name, tokens: [Name(0,14)]
             }
 
             // eg NUL-char not allowed
@@ -186,12 +174,16 @@ mod tests {
                 parser: XMLParser, input: "\x00", rule: Rule::Name,
                 positives: vec![Rule::Name], negatives: vec![], pos: 0
             };
+
+            // `=` not part of name
+            parses_to! {
+                parser: XMLParser, input: "some-na=me", rule: Rule::Name, tokens: [Name(0,7)]
+            };
         }
 
         #[test]
         fn test_xml_attribute_value() {
 
-            // unicode-encoded emojis are allowed
             parses_to! {
                 parser: XMLParser, input: r#""my-custom-attr""#, rule: Rule::AttValue, tokens: [AttValue(0,16)]
             }
@@ -200,6 +192,53 @@ mod tests {
             fails_with! {
                 parser: XMLParser, input: r#""some-attr&""#, rule: Rule::AttValue,
                 positives: vec![Rule::Name], negatives: vec![], pos: 11
+            };
+        }
+
+        #[test]
+        fn test_xml_attribute() {
+
+            parses_to! {
+                parser: XMLParser, input: r#"my-attr="my-custom-val""#, rule: Rule::Attribute, tokens: [Attribute(0,23, [
+                    Name(0,7),Eq(7,8),AttValue(8,23)
+                ])]
+            }
+
+            // missing closing quote
+            fails_with! {
+                parser: XMLParser, input: r#"my-attr="my-custom-val"#, rule: Rule::AttValue,
+                positives: vec![Rule::AttValue], negatives: vec![], pos: 0
+            };
+        }
+
+        #[test]
+        fn test_xml_emptyelemtag() {
+
+            parses_to! {
+                parser: XMLParser, input: "<br/>", rule: Rule::EmptyElemTag, tokens: [EmptyElemTag(0,5, [
+                    Name(1,3)
+                ])]
+            }
+
+            // whitespace after `Name`
+            parses_to! {
+                parser: XMLParser, input: "<br />", rule: Rule::EmptyElemTag, tokens: [EmptyElemTag(0,6, [
+                    Name(1,3),S(3,4)
+                ])]
+            }
+
+            // `EmptyElemTag` with attributes
+            parses_to! {
+                parser: XMLParser, input: r#"<img my-attr="my-custom-val" />"#, rule: Rule::EmptyElemTag, tokens: [EmptyElemTag(0,31, [
+                    Name(1,4),S(4,5),Attribute(5,28, [Name(5,12),Eq(12,13),AttValue(13,28)]),S(28,29)
+                ])]
+            }
+
+            // not an `EmptyElemTag` (but a normal elem-tag)
+            // ->`<` after `<br>` doesn't match `Name` nor `"/>"` nor `Rule::S`
+            fails_with! {
+                parser: XMLParser, input: "<br></br>", rule: Rule::EmptyElemTag,
+                positives: vec![Rule::S], negatives: vec![], pos: 3
             };
         }
     }
