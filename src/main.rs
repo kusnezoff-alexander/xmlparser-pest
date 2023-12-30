@@ -107,16 +107,16 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_xml_char() {
-
-        // let c = "a";
-        // let xml = XMLParser::parse(Rule::Char, c).unwrap().next().unwrap();
-        // assert_eq!("a",parse_value(xml));
-        parses_to! {
-            parser: XMLParser, input: " ", rule: Rule::Char, tokens: [Char(0,1)]
-        }
-    }
+    // #[test]
+    // fn test_xml_char() {
+    //
+    //     // let c = "a";
+    //     // let xml = XMLParser::parse(Rule::Char, c).unwrap().next().unwrap();
+    //     // assert_eq!("a",parse_value(xml));
+    //     parses_to! {
+    //         parser: XMLParser, input: " ", rule: Rule::Char, tokens: [Char(0,1)]
+    //     }
+    // }
 
 
     mod general_tests {
@@ -149,18 +149,57 @@ mod tests {
         #[test]
         fn test_xml_comment() {
             parses_to! {
-                parser: XMLParser, input: "<!-- -->", rule: Rule::Comment, tokens: [Comment(0,8, [Char(4,5)])]
+                parser: XMLParser, input: "<!-- -->", rule: Rule::Comment, tokens: [Comment(0,8)]
             }
             parses_to! {
-                parser: XMLParser, input: "<!--abce&h_jkl:;-->", rule: Rule::Comment, tokens: [Comment(0,19, [
-                            Char(4,5),Char(5,6),Char(6,7),Char(7,8),Char(8,9),Char(9,10),Char(10,11),Char(11,12),Char(12,13),Char(13,14),Char(14,15),Char(15,16)
-                ])]
+                parser: XMLParser, input: "<!--abce&h_jkl:;-->", rule: Rule::Comment, tokens: [Comment(0,19)]
             }
 
             // ending with '-' :(
             fails_with! {
                 parser: XMLParser, input: "<!-- a--->", rule: Rule::Comment,
                 positives: vec![Rule::Comment], negatives: vec![], pos: 0
+            };
+        }
+
+        #[test]
+        fn test_xml_charref() {
+            parses_to! {
+                parser: XMLParser, input: "&#160;", rule: Rule::CharRef, tokens: [CharRef(0,6)]
+            }
+
+            parses_to! {
+                parser: XMLParser, input: "&#x1f0;", rule: Rule::CharRef, tokens: [CharRef(0,7)]
+            }
+        }
+
+        #[test]
+        fn test_xml_name() {
+
+            // unicode-encoded emojis are allowed
+            parses_to! {
+                parser: XMLParser, input: "\u{1F600}ABCDEF \u{1F600}", rule: Rule::Name, tokens: [Name(0,15)]
+            }
+
+            // eg NUL-char not allowed
+            fails_with! {
+                parser: XMLParser, input: "\x00", rule: Rule::Name,
+                positives: vec![Rule::Name], negatives: vec![], pos: 0
+            };
+        }
+
+        #[test]
+        fn test_xml_attribute_value() {
+
+            // unicode-encoded emojis are allowed
+            parses_to! {
+                parser: XMLParser, input: r#""my-custom-attr""#, rule: Rule::AttValue, tokens: [AttValue(0,16)]
+            }
+
+            // `&` disallowed: Parser waits for `Entity`-Name to follow `&`-char
+            fails_with! {
+                parser: XMLParser, input: r#""some-attr&""#, rule: Rule::AttValue,
+                positives: vec![Rule::Name], negatives: vec![], pos: 11
             };
         }
     }

@@ -13,3 +13,4 @@ Implementation of a [XML 1.0](https://www.w3.org/TR/REC-xml/#NT-XMLDecl)-parser 
 - Markup- and Programming-Languages are just a sequence of *strings/bytes* in the end
 - Specification != Implementation is possible
 - writing Grammar-Rules in [PEG](https://en.wikipedia.org/wiki/Parsing_expression_grammar)
+- Unicode-Encoding
