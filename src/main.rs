@@ -320,6 +320,25 @@ mod tests {
         }
     }
 
+    mod doctypedecl{
+        use super::*;
+
+        #[test]
+        fn test_systemliteral() {
+            parses_to! {
+                parser:XMLParser, input: r#""abc""#, rule: Rule::SystemLiteral, tokens: [SystemLiteral(0,5, [Quote(0,1)])]
+            }
+
+            parses_to! {
+                parser:XMLParser, input: "\"abc-\u{1231}\u{00}_;.ß''#\"", rule: Rule::SystemLiteral, tokens: [SystemLiteral(0,18, [Quote(0,1)])]
+            }
+
+            // Quotes within are matched as end of `SystemLiteral`
+            parses_to! {
+                parser:XMLParser, input: r#"'a'bc'"#, rule: Rule::SystemLiteral, tokens: [SystemLiteral(0,3, [Quote(0,1)])]
+            }
+        }
+    }
     #[test]
     fn test_xml_eq() {
         parses_to! {
@@ -387,48 +406,91 @@ mod tests {
 
     }
 
-    #[test]
-    fn test_xml_cdata() {
+    mod cdata {
+        use super::*;
 
-        // CDStart
-        parses_to! {
-            parser: XMLParser, input: "<![CDATA[", rule: Rule::CDStart,
-            tokens: [CDStart(0,9)]
-        };
-        fails_with! {
-            parser: XMLParser, input: "<![CDATA", rule: Rule::CDStart,
-            positives: vec![Rule::CDStart], negatives: vec![], pos: 0
-        };
+        #[test]
+        fn test_xml_cdata() {
 
-        // CDEnd
-        parses_to! {
-            parser: XMLParser, input: "]]>", rule: Rule::CDEnd,
-            tokens: [CDEnd(0,3)]
-        };
-        fails_with! {
-            parser: XMLParser, input: "]>", rule: Rule::CDEnd,
-            positives: vec![Rule::CDEnd], negatives: vec![], pos: 0
-        };
+            // CDStart
+            parses_to! {
+                parser: XMLParser, input: "<![CDATA[", rule: Rule::CDStart,
+                tokens: [CDStart(0,9)]
+            };
+            fails_with! {
+                parser: XMLParser, input: "<![CDATA", rule: Rule::CDStart,
+                positives: vec![Rule::CDStart], negatives: vec![], pos: 0
+            };
+
+            // CDEnd
+            parses_to! {
+                parser: XMLParser, input: "]]>", rule: Rule::CDEnd,
+                tokens: [CDEnd(0,3)]
+            };
+            fails_with! {
+                parser: XMLParser, input: "]>", rule: Rule::CDEnd,
+                positives: vec![Rule::CDEnd], negatives: vec![], pos: 0
+            };
 
 
-        // CData
-        parses_to! {
-            parser: XMLParser, input: "<greeting>Hello world</greeting>", rule: Rule::CData,
-            tokens: [CData(0,32)]
-        };
-        fails_with! {
-            parser: XMLParser, input: "<![CDAA[<greeting>Hello, world!</greeting>]]>", rule: Rule::CData,
-            positives: vec![Rule::CData], negatives: vec![], pos: 42
-        };
-        let cddata_example = "<greeting>Hello world</greeting>";
-        assert!(XMLParser::parse(Rule::CData, cddata_example).is_ok());
-        let cddata_example = "<![CDAA[<greeting>Hello, world!</greeting>]]>";
-        println!("{:?}", XMLParser::parse(Rule::CData, cddata_example));
-        assert!(XMLParser::parse(Rule::CData, cddata_example).is_err());
+            // CData
+            parses_to! {
+                parser: XMLParser, input: "<greeting>Hello world</greeting>", rule: Rule::CData,
+                tokens: [CData(0,32)]
+            };
+            fails_with! {
+                parser: XMLParser, input: "<![CDAA[<greeting>Hello, world!</greeting>]]>", rule: Rule::CData,
+                positives: vec![Rule::CData], negatives: vec![], pos: 42
+            };
+            let cddata_example = "<greeting>Hello world</greeting>";
+            assert!(XMLParser::parse(Rule::CData, cddata_example).is_ok());
+            let cddata_example = "<![CDAA[<greeting>Hello, world!</greeting>]]>";
+            println!("{:?}", XMLParser::parse(Rule::CData, cddata_example));
+            assert!(XMLParser::parse(Rule::CData, cddata_example).is_err());
 
-        let cdsect_example = "<![CDATA[<greeting>Hello, world!</greeting>]]>";
-        assert!(XMLParser::parse(Rule::CDSect, cdsect_example).is_ok());
-        let cdsect_example = "<![CDAA[<greeting>Hello, world!</greeting>]]>";
-        assert!(XMLParser::parse(Rule::CDSect, cdsect_example).is_err());
+            let cdsect_example = "<![CDATA[<greeting>Hello, world!</greeting>]]>";
+            assert!(XMLParser::parse(Rule::CDSect, cdsect_example).is_ok());
+            let cdsect_example = "<![CDAA[<greeting>Hello, world!</greeting>]]>";
+            assert!(XMLParser::parse(Rule::CDSect, cdsect_example).is_err());
+        }
+    }
+
+    mod pi {
+        use super::*;
+
+        #[test]
+        fn test_xml_pitarget() {
+            parses_to! {
+                parser: XMLParser, input: "xml-stylesheet", rule: Rule::PITarget, tokens: [PITarget(0,14)]
+            }
+
+            // "xml" not allowed
+            fails_with! {
+                parser: XMLParser, input: "xml", rule: Rule::PITarget,
+                positives: vec![Rule::PITarget], negatives: vec![], pos: 0
+            };
+
+            fails_with! {
+                parser: XMLParser, input: "xMl", rule: Rule::PITarget,
+                positives: vec![Rule::PITarget], negatives: vec![], pos: 0
+            };
+        }
+
+        #[test]
+        fn test_xml_pi() {
+            parses_to! {
+                parser: XMLParser, input: r#"<?xml-stylesheet type="text/css" href="style.css"?>"#, rule: Rule::PI, tokens: [PI(0,51, [
+                    PITarget(2,16),S(16,17)
+                ])]
+            }
+
+
+            // no `?>` inside -> terminates `PI` earlier!!
+            parses_to! {
+                parser: XMLParser, input: r#"<?xml-stylesheet ?> type="text/css" href="style.css"?>"#, rule: Rule::PI, tokens: [PI(0,19, [
+                    PITarget(2,16),S(16,17)
+                ])]
+            }
+        }
     }
 }

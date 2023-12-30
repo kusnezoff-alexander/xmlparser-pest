@@ -5,6 +5,7 @@ Char = _{ "\x09" | "\x0A" | "\x0D" | '\x20'..'\u{D7FF}' | '\u{E000}'..'\u{FFFD}'
 // # General
 S = { ("\x20" | "\x09" | "\x0D" | "\x0A")+ } // see [S](https://www.w3.org/TR/REC-xml/#NT-S)
 Quote = { "'" | "\"" }
+Misc = { Comment | PI | S }
 
 // Name
 Name = { NameStartChar ~ NameChar*}
@@ -25,6 +26,7 @@ CharRef = { "&#" ~ ASCII_DIGIT+ ~ ";" | "&#x" ~ ASCII_HEX_DIGIT+ ~ ";" } // [66]
 Comment = { "<!--" ~ (!"-" ~ Char | "-" ~ !"-" ~ Char)* ~ "-->" } // =last char can't be '-'
 
 // # Prolog [22]
+// ## XMLDecl [23]
 XMLDecl = { "<?xml" ~ VersionInfo ~ EncodingDecl? ~ StandaloneDecl? ~ S? ~ "?>" } // [23](https://www.w3.org/TR/REC-xml/#NT-XMLDecl)
 VersionInfo = { S ~ "version" ~ Eq ~ PUSH(Quote) ~ VersionNum ~ POP }
 Eq = { S? ~ "=" ~ S? } // [25]
@@ -36,6 +38,18 @@ EncName = { ASCII_ALPHA  ~ ( ASCII_ALPHANUMERIC | "." | "_" | "-" )* } // [81] =
 // `standalone="yes"` == ignore any markup declarations in the DTD
 // see [StackOverflow](https://stackoverflow.com/a/14690849/20675205)
 StandaloneDecl = { S ~ "standalone" ~ Eq ~ PUSH(Quote) ~ ("yes"|"no") ~ POP } // [32](https://www.w3.org/TR/REC-xml/#NT-SDDecl)
+
+// ## Document Type Declaration [28]
+// Doctypedecl = { "<!DOCTYPE" ~ S ~ Name } // TODO
+
+// ### External Entities
+ExternalID = { ("SYSTEM" ~ S ~ SystemLiteral) | ("Public" ~ S ~ PubidLiteral ~ S ~ SystemLiteral) }
+SystemLiteral = { PUSH(Quote) ~ (!PEEK ~ ANY)* ~ POP } // =anything within quotes (but no quotes within quotes!), see [11](https://www.w3.org/TR/REC-xml/#NT-SystemLiteral)
+PubidLiteral = { ("\"" ~ PubidChar* ~ "\"") | "'" ~ (!"'" ~ PubidChar)* ~ "'" }
+PubidChar = _{
+	"\x20" | "\x0D" | "\0xA" | ASCII_ALPHANUMERIC | "-" | "'" | "(" | ")" | "+" | "," |
+	"." | "/" | ":" | "=" | "?" | ";" | "!" | "*" | "#" | "@" | "$" | "_" | "%"
+} // [13](https://www.w3.org/TR/REC-xml/#NT-PubidChar)
 
 // # CDATA Sections
 CDStart = { "<![CDATA[" }
@@ -49,5 +63,15 @@ AttValueDisallowed = _{ "<" | "&" | "\"" }
 AttValue = { "\"" ~ (!AttValueDisallowed ~ Char | Reference )* ~ "\""} // [10](https://www.w3.org/TR/REC-xml/#NT-AttValue)
 
 // # Element [39](https://www.w3.org/TR/REC-xml/#NT-element)
-// Element = { EmptyElemTag | STag ~ content ~ Etag }
+// Element = { EmptyElemTag | STag ~ content ~ Etag } // TODO
+// Constraints
+// - *Well-formedness constraint*: [Element Type Match](https://www.w3.org/TR/REC-xml/#GIMatch)
 EmptyElemTag = { "<" ~ Name ~ (S ~ Attribute)* ~ S? ~ "/>" } // eg `<br/>`, see [44](https://www.w3.org/TR/REC-xml/#NT-EmptyElemTag)
+STag = { "<" ~ PUSH(Name) ~ (S ~ Attribute)* ~ S? ~ ">" } // [40](https://www.w3.org/TR/REC-xml/#NT-STag)
+ETag = { "</" ~ POP ~ S? ~ ">" } // [42](https://www.w3.org/TR/REC-xml/#NT-ETag)
+
+// # Processing Instructions
+// -> see [16](https://www.w3.org/TR/REC-xml/#sec-pi)
+// - `PITarget`=identifies app to which the instr is directed
+PI = { "<?" ~ PITarget ~ (S ~ (!"?>" ~ Char)*)? ~ "?>" }
+PITarget = { (!^"xml" ~ Name) | ("xml" ~ NameChar+) } // target="xml"|"xMl"|"XML"|... are reserved! BUT may contain "xml" (eg "xml-stylesheet")
