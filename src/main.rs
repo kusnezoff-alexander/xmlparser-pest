@@ -8,7 +8,6 @@ use std::fs;
 // #[derive(Parser)]
 // #[grammar = "json.pest"]
 // struct JSONParser;
-//
 
 #[derive(Parser)]
 #[grammar = "xml.pest"]
@@ -241,6 +240,16 @@ mod tests {
                 positives: vec![Rule::S], negatives: vec![], pos: 3
             };
         }
+
+        #[test]
+        fn test_xml_chardata() {
+
+            // "]]>" is not part of `CharData`
+            parses_to! {
+                parser: XMLParser, input: "]]>", rule: Rule::CharData, tokens: [CharData(0,0)]
+            };
+
+        }
     }
 
     mod prolog_tests {
@@ -324,7 +333,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn test_systemliteral() {
+        fn test_xml_systemliteral() {
             parses_to! {
                 parser:XMLParser, input: r#""abc""#, rule: Rule::SystemLiteral, tokens: [SystemLiteral(0,5, [Quote(0,1)])]
             }
@@ -338,6 +347,26 @@ mod tests {
                 parser:XMLParser, input: r#"'a'bc'"#, rule: Rule::SystemLiteral, tokens: [SystemLiteral(0,3, [Quote(0,1)])]
             }
         }
+
+        /// Examples taken from [4.2.2 External Entities](https://www.w3.org/TR/REC-xml/#sec-external-ent)
+        #[test]
+        fn test_xml_externalid() {
+            // "SYSTEM" is accepted
+            parses_to! {
+                parser:XMLParser, input: r#"SYSTEM "http://www.textuality.com/boilerplate/OpenHatch.xml""#, rule: Rule::ExternalID, tokens: [ExternalID(0,60, [
+                    S(6,7), SystemLiteral(7,60, [Quote(7,8)])
+                ])]
+            }
+
+            // "PUBLIC" is accepted
+            parses_to! {
+                parser:XMLParser, input: r#"PUBLIC "-//Textuality//TEXT Standard open-hatch boilerplate//EN"
+         "http://www.textuality.com/boilerplate/OpenHatch.xml""#, rule: Rule::ExternalID, tokens: [ExternalID(0,127, [
+                    S(6,7), PubidLiteral(7,64), S(64,74), SystemLiteral(74,127, [Quote(74,75)])
+                ])]
+            }
+        }
+
     }
     #[test]
     fn test_xml_eq() {

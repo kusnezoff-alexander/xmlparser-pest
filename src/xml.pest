@@ -1,6 +1,12 @@
+document = { prolog ~ element ~ Misc* }
+
 // # Character class (inspired by [Github](https://github.com/jturner314/py_literal/blob/master/src/grammar.pest)
 // =no *control characters* or chars outside Unicode range
 Char = _{ "\x09" | "\x0A" | "\x0D" | '\x20'..'\u{D7FF}' | '\u{E000}'..'\u{FFFD}' | '\u{10000}'..'\u{10FFFF}' }
+// [14 CharData](https://www.w3.org/TR/REC-xml/#NT-CharData)
+// =Forbidden= "&"|"<" (except when used as *markup delimiters*,*comment*,*PI*,*CDATA*-section
+//	-> CharData doesn't include *start-delimiter* of any markup or *close-delimiter* "]]>" of `CDATA`
+CharData = { (!("<"|"&"|"]]>") ~ Char)*}
 
 // # General
 S = { ("\x20" | "\x09" | "\x0D" | "\x0A")+ } // see [S](https://www.w3.org/TR/REC-xml/#NT-S)
@@ -20,6 +26,7 @@ NameChar = _{ NameStartChar | "-" | "." | ASCII_DIGIT | "\xB7" | '\u{0300}'..'\u
 // Reference
 Reference = { EntityRef | CharRef } // [67](https://www.w3.org/TR/REC-xml/#NT-Reference)
 EntityRef = { "&" ~ Name ~ ";" } // [68](https://www.w3.org/TR/REC-xml/#NT-EntityRef)
+PEReference = { "%" ~ Name ~ ";" } // [69 Parsed Entity Ref](https://www.w3.org/TR/REC-xml/#NT-PEReference)
 CharRef = { "&#" ~ ASCII_DIGIT+ ~ ";" | "&#x" ~ ASCII_HEX_DIGIT+ ~ ";" } // [66](https://www.w3.org/TR/REC-xml/#NT-CharRef)
 
 // Comment [15](https://www.w3.org/TR/REC-xml/#NT-Comment)
@@ -27,6 +34,7 @@ Comment = { "<!--" ~ (!"-" ~ Char | "-" ~ !"-" ~ Char)* ~ "-->" } // =last char 
 
 // # Prolog [22]
 // ## XMLDecl [23]
+prolog = { XMLDecl? ~ Misc* ~ (doctypedecl ~ Misc*)? } // [22](https://www.w3.org/TR/REC-xml/#NT-prolog)
 XMLDecl = { "<?xml" ~ VersionInfo ~ EncodingDecl? ~ StandaloneDecl? ~ S? ~ "?>" } // [23](https://www.w3.org/TR/REC-xml/#NT-XMLDecl)
 VersionInfo = { S ~ "version" ~ Eq ~ PUSH(Quote) ~ VersionNum ~ POP }
 Eq = { S? ~ "=" ~ S? } // [25]
@@ -40,10 +48,46 @@ EncName = { ASCII_ALPHA  ~ ( ASCII_ALPHANUMERIC | "." | "_" | "-" )* } // [81] =
 StandaloneDecl = { S ~ "standalone" ~ Eq ~ PUSH(Quote) ~ ("yes"|"no") ~ POP } // [32](https://www.w3.org/TR/REC-xml/#NT-SDDecl)
 
 // ## Document Type Declaration [28]
-// Doctypedecl = { "<!DOCTYPE" ~ S ~ Name } // TODO
+doctypedecl = { "<!DOCTYPE" ~ S ~ Name ~ (S ~ ExternalID)? ~ S? ~ ("[" ~ intSubset ~ "]" ~ S?)? ~ ">" } // [28](https://www.w3.org/TR/REC-xml/#NT-doctypedecl)
+DeclSep = { PEReference | S } // [28a](https://www.w3.org/TR/REC-xml/#NT-DeclSep)
+intSubset = { (markupdecl | DeclSep)* }
+markupdecl = { elementdecl | AttlistDecl | EntityDecl | NotationDecl | PI | Comment }
+NotationDecl = { "<!NOTATION" ~ S ~ Name ~ S ~ (ExternalID|PublicID) ~ S? ~ ">" }// [82](https://www.w3.org/TR/REC-xml/#NT-NotationDecl)
+PublicID = { "PUBLIC" ~ S ~ PubidLiteral } // [83](https://www.w3.org/TR/REC-xml/#NT-PublicID)
+
+// ### Element Type Declaration [45]
+elementdecl = { "<!ELEMENT" ~ S ~ Name ~ S ~ contentspec ~ S? ~ ">" }
+contentspec = { "EMPTY" | "ANY" | Mixed | children }
+Mixed = { ("(" ~ S? ~ "#PCDATA" ~ (S? ~ "|" ~ S? ~ Name)* ~ S?) | ( "(" ~ S? ~ "#PCDATA" ~ S? ~ ")" )} // [51](https://www.w3.org/TR/REC-xml/#NT-Mixed)
+children = { ( choice | seq ) ~ ("?"|"*"|"+")? }
+cp = { ( Name | choice | seq ) ~ ("?"|"*"|"+")? }
+choice = { "(" ~ S? ~ cp ~ (S? ~ "|" ~ S? ~ cp )+ ~ S? ~ ")" }
+seq = { "(" ~ S? ~ cp ~ (S? ~ "," ~ S? ~ cp )* ~ S? ~ ")" }
+
+// ### Attribute-list Declaration
+AttlistDecl = { "<!ATTLIST" ~ S ~ Name ~ AttDef* ~ S? ~ ">" }
+AttDef = { S ~ Name ~ S ~ AttType ~ S ~ DefaultDecl }
+AttType = { StringType | TokenizedType | EnumeratedType } // [54](https://www.w3.org/TR/REC-xml/#NT-AttType)
+StringType = { "CDATA" }
+TokenizedType = { "ID"|"IDREF"|"ENTITY"|"ENTITIES"|"NMTOKEN"|"NMTOKENS" }
+EnumeratedType = { NotationType | Enumeration } // [57](https://www.w3.org/TR/REC-xml/#NT-EnumeratedType)
+NotationType = { "NOTATION" ~ S ~ "(" ~ S? ~ Name ~ (S? ~ "|" ~ S? ~ Name)* ~ S? ~ ")" }
+Enumeration = { "(" ~ S? ~ Nmtoken ~ (S? ~ "|" ~ S? ~ Nmtoken)* ~ S? ~ ")" }
+Nmtoken = { NameChar+ }
+
+DefaultDecl = { "#REQUIRED"|"#IMPLIED"|( ("#FIXED"~S)? ~ AttValue) } // [60](https://www.w3.org/TR/REC-xml/#NT-DefaultDecl)
+
+// ## Entity Declaration [70](https://www.w3.org/TR/REC-xml/#NT-EntityDecl)
+EntityDecl = { GEDecl | PEDecl }
+GEDecl = { "<!ENTITY" ~ S ~ Name ~ S ~ EntityDef ~ S? ~ ">" }
+PEDecl = { "<!ENTITY" ~ S ~ "%" ~ S ~ Name ~ S ~ PEDef ~ S? ~ ">" }
+EntityValue = { PUSH(Quote) ~ (!("%"|"&"|PEEK) ~ PEReference ~ Reference )* ~ POP }
+EntityDef = { EntityValue | (ExternalID ~ NDataDecl?) }
+PEDef = { EntityValue | ExternalID }
+NDataDecl = { S ~ "NDATA" ~ S ~ Name }
 
 // ### External Entities
-ExternalID = { ("SYSTEM" ~ S ~ SystemLiteral) | ("Public" ~ S ~ PubidLiteral ~ S ~ SystemLiteral) }
+ExternalID = { ("SYSTEM" ~ S ~ SystemLiteral) | ("PUBLIC" ~ S ~ PubidLiteral ~ S ~ SystemLiteral) }
 SystemLiteral = { PUSH(Quote) ~ (!PEEK ~ ANY)* ~ POP } // =anything within quotes (but no quotes within quotes!), see [11](https://www.w3.org/TR/REC-xml/#NT-SystemLiteral)
 PubidLiteral = { ("\"" ~ PubidChar* ~ "\"") | "'" ~ (!"'" ~ PubidChar)* ~ "'" }
 PubidChar = _{
@@ -63,11 +107,13 @@ AttValueDisallowed = _{ "<" | "&" | "\"" }
 AttValue = { "\"" ~ (!AttValueDisallowed ~ Char | Reference )* ~ "\""} // [10](https://www.w3.org/TR/REC-xml/#NT-AttValue)
 
 // # Element [39](https://www.w3.org/TR/REC-xml/#NT-element)
-// Element = { EmptyElemTag | STag ~ content ~ Etag } // TODO
 // Constraints
 // - *Well-formedness constraint*: [Element Type Match](https://www.w3.org/TR/REC-xml/#GIMatch)
+
+element = { EmptyElemTag | STag ~ content ~ ETag }
 EmptyElemTag = { "<" ~ Name ~ (S ~ Attribute)* ~ S? ~ "/>" } // eg `<br/>`, see [44](https://www.w3.org/TR/REC-xml/#NT-EmptyElemTag)
 STag = { "<" ~ PUSH(Name) ~ (S ~ Attribute)* ~ S? ~ ">" } // [40](https://www.w3.org/TR/REC-xml/#NT-STag)
+content = { CharData? ~ ((element|Reference|CDSect|PI|Comment) ~ CharData?)* } // [43](https://www.w3.org/TR/REC-xml/#NT-content)
 ETag = { "</" ~ POP ~ S? ~ ">" } // [42](https://www.w3.org/TR/REC-xml/#NT-ETag)
 
 // # Processing Instructions
